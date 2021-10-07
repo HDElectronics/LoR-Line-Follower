@@ -2,13 +2,13 @@
  * @Author: KHADRAOUI Ibrahim
  * @Date: 2021-07-09 01:34:33
  * @Last Modified by: KHADRAOUI Ibrahim
- * @Last Modified time: 2021-07-10 02:18:27
+ * @Last Modified time: 2021-07-11 04:48:58
  */
 
 /*Libraries*/
 #include <Arduino.h>
 #include <SoftwareSerial.h>
-
+#include <QTRSensors.h>
 
 /*Defines*/
 #define IN1 2
@@ -16,7 +16,7 @@
 #define IN3 4
 #define IN4 5
 #define ENA 6
-#define ENB 8
+#define ENB 9
 #define RX_BT 10
 #define TX_BT 11
 #define SL3 A5
@@ -30,24 +30,25 @@
 /* SL3 SL2 SL1 SL0 SR0 SR1 SR2 SR3 */
 
 /*Instances*/
-SoftwareSerial SSerial(TX_BT, RX_BT);
+SoftwareSerial SSerial(RX_BT, TX_BT);
+QTRSensors qtr;
 
 /*Variables*/
-float Kp = 0, Ki = 0, Kd = 0;//change the value of kp ,ki and kd factors randomly and find a set of these value wich works good for your robot 
-float error = 0, P = 0, I = 0, D = 0, PID_value = 0;//defining the intial value 0
+float Kp = 0, Ki = 0, Kd = 0;//change the value of kp ,ki and kd factors randomly and find a set of these value witch works good for your robot 
+float error = 0, P = 0, I = 0, D = 0, PID_value = 0;//defining the initial value 0
 float previous_error = 0, previous_I = 0;//defining initially values of previous_error and previous_I 0 
-int sensor[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };//defining the sensor arrey of 5 
-bool sensor_state[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 int initial_motor_speed = 100;//defining the initial value of the motor speed as 100,can be changed
-int black_threshold = 0;
+const uint8_t SensorCount = 8;
+uint16_t sensorValues[SensorCount];
+bool Black_Line[SensorCount];
 
 /*Functions*/
-void read_sensor_values(void);//function that reads sensor values
-void calculate_pid(void);//function that caluculates the pid value
+void calculate_pid(void);//function that calculates the pid value
 void motor_control(void);//function that perform motor control action
 void bluetooth_values();//function that get pid constants from HC-05
-void test_sensors();//see the values of ir sensors HC-05
-int get_black_threshold();
+void track_black_line();
+void emptyBuff();
+void motor(int vR, int vL);
 
 void setup() {
   pinMode(IN1, OUTPUT);
@@ -57,58 +58,123 @@ void setup() {
   pinMode(ENA, OUTPUT);
   pinMode(ENB, OUTPUT);
   SSerial.begin(9600);
-  //bluetooth_values();
+  Serial.begin(9600);
+  qtr.setTypeAnalog();
+  qtr.setSensorPins((const uint8_t[]) { SL3, SL2, SL1, SL0, SR0, SR1, SR2, SR3 }, 8);
+  qtr.setSamplesPerSensor(8);
+
+  SSerial.println("Calibration started for 10 secondes");
+  Serial.println("Calibration started for 10 secondes");
+  // analogRead() takes about 0.1 ms on an AVR.
+  // 0.1 ms per sensor * 8 samples per sensor read * 8 sensors
+  // * 10 reads per calibrate() call = 64 ms per calibrate() call.
+  // Call calibrate() 156 times to make calibration take about 10 seconds.
+  for(uint16_t i = 0; i < 156; i++) {
+    qtr.calibrate();
+  }
+  SSerial.println("Calibration terminated");
+  Serial.println("Calibration terminated");
+
+  SSerial.println("Sensor calibration minimum:");
+  Serial.println("Sensor calibration minimum:");
+  for(uint8_t i = 0; i < SensorCount; i++) {
+    SSerial.print(qtr.calibrationOn.minimum[i]);
+    SSerial.print(" ");
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(" ");
+  }
+  SSerial.println();
+  SSerial.println("Sensor calibration maximum:");
+  Serial.println();
+  Serial.println("Sensor calibration maximum:");
+  for(uint8_t i = 0; i < SensorCount; i++) {
+    SSerial.print(qtr.calibrationOn.maximum[i]);
+    SSerial.print(" ");
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(" ");
+  }
+  SSerial.println();
+  Serial.println();
 }
 
 void loop() {
-  test_sensors();
-  //read_sensor_values();//sensor data is read
-  //calculate_pid();// pid is calculated
-  //motor_control();//motor speed is controlled
+
+  /*qtr.read(sensorValues, QTRReadMode::On);
+  SSerial.println("\n\rsensorValues:");
+  Serial.println("\n\rsensorValues:");
+  for(uint8_t i = 0; i < SensorCount; i++) {
+    SSerial.print(sensorValues[i]);
+    SSerial.print(',');
+    Serial.print(sensorValues[i]);
+    Serial.print(',');
+  }*/
+
+  SSerial.println("\n\rBlack_Line:");
+  Serial.println("\n\rBlack_Line:");
+  for(uint8_t i = 0; i < SensorCount; i++) {
+    SSerial.print(Black_Line[i]);
+    SSerial.print(',');
+    Serial.print(Black_Line[i]);
+    Serial.print(',');
+  }
+
+  track_black_line();
+
+  SSerial.println("\n\rerror:");
+  Serial.println("\n\rerror:");
+  SSerial.print(error);
+  Serial.print(error);
+  calculate_pid();
+
+  SSerial.print(";\n\r******************");
+  Serial.print(";\n\r******************");
+  delay(100);
 }
 
-void read_sensor_values() {
-  sensor[0] = analogRead(SL3);//sensor data read from A0 arduino pin
-  sensor[1] = analogRead(SL2);//sensor data read from A1 arduino pin
-  sensor[2] = analogRead(SL1);//sensor data read from A2 arduino pin
-  sensor[3] = analogRead(SL0);//sensor data read from A3 arduino pin
-  sensor[4] = analogRead(SR0);//sensor data read from A4 arduino pin
-  sensor[5] = analogRead(SR1);//sensor data read from A5 arduino pin
-  sensor[6] = analogRead(SR2);//sensor data read from A6 arduino pin
-  sensor[7] = analogRead(SR3);//sensor data read from A7 arduino pin
-
-  for (int i = 0; i <= 7; i++)
-  {
-    sensor_state[i] = (sensor[i] > black_threshold) ? 1 : 0;//if sensor value exceed the black threshold so it's on black line and it's give true (ternary operator)
-  }
-  
-
-  if((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 0) && (sensor_state[5] == 0) && (sensor_state[6] == 0) && (sensor_state[7] == 1))
-    error = 4;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 0) && (sensor_state[5] == 0) && (sensor_state[6] == 1) && (sensor_state[7] == 1)))
-    error = 3;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 0) && (sensor_state[5] == 1) && (sensor_state[6] == 1) && (sensor_state[7] == 0)))
-    error = 2;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 1) && (sensor_state[5] == 1) && (sensor_state[6] == 0) && (sensor_state[7] == 0)))
-    error = 1;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 1) && (sensor_state[4] == 1) && (sensor_state[5] == 0) && (sensor_state[6] == 0) && (sensor_state[7] == 0)))
+void calculate_pid() { //calculating pid
+  if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
     error = 0;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 0) && (sensor_state[2] == 1) && (sensor_state[3] == 1) && (sensor_state[4] == 0) && (sensor_state[5] == 0) && (sensor_state[6] == 0) && (sensor_state[7] == 0)))
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
     error = -1;
-  else if(((sensor_state[0] == 0) && (sensor_state[1] == 1) && (sensor_state[2] == 1) && (sensor_state[3] == 0) && (sensor_state[4] == 0) && (sensor_state[5] == 0) && (sensor_state[6] == 0) && (sensor_state[7] == 0)))
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+    error = 1;
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
     error = -2;
-  else if(((sensor_state[0] == 1) && (sensor_state[1] == 1) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 1) && (sensor_state[5] == 1) && (sensor_state[6] == 1) && (sensor_state[7] == 1)))
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 1 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+    error = 2;
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 1 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
     error = -3;
-  else if(((sensor_state[0] == 1) && (sensor_state[1] == 0) && (sensor_state[2] == 0) && (sensor_state[3] == 0) && (sensor_state[4] == 0) && (sensor_state[5] == 0) && (sensor_state[6] == 0) && (sensor_state[7] == 0)))
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 1 && Black_Line[7] == 0) {
+    error = 3;
+  }
+  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
     error = -4;
-  else   {
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 1 && Black_Line[7] == 1) {
+    error = 4;
+  }
+  else if(Black_Line[0] == 1 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+    error = -5;
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 1) {
+    error = 5;
+  }
+  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 1) {
+    error = -8;
+  }
+  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 1 && Black_Line[6] == 1 && Black_Line[7] == 1) {
+    error = 8;
+  }
+  else {
     error = error;
   }
 
-}
-
-void calculate_pid()//calculating pid 
-{
   P = error;
   I = I + previous_I;
   D = error - previous_error;
@@ -117,69 +183,105 @@ void calculate_pid()//calculating pid
   previous_error = error;
 }
 
-void motor_control()//motor control
-{
+void motor_control() { //motor control
   // Calculating the effective motor speed:
-  int left_motor_speed = initial_motor_speed - PID_value;
+  int left_motor_speed = initial_motor_speed + PID_value;
   int right_motor_speed = initial_motor_speed + PID_value;
 
   // The motor speed should not exceed the max PWM value
   constrain(left_motor_speed, 0, 255);
   constrain(right_motor_speed, 0, 255);
 
-  analogWrite(ENA, initial_motor_speed - PID_value);   //Left Motor Speed
-  analogWrite(ENB, initial_motor_speed + PID_value);  //Right Motor Speed
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+  motor(right_motor_speed, left_motor_speed);
 }
 
 void bluetooth_values() {
-  while(!SSerial.available()) //waiting for HC-05
-  {
+  while(!SSerial.available()) {//waiting for HC-05
     delay(1);
   }
+  emptyBuff();
   SSerial.println("Hello Enter following values");
   SSerial.println("Kp: ");
-  while(SSerial.available() == 0)   {
+  while(SSerial.available() == 0) {
     delay(1);
   }
   Kp = SSerial.parseFloat();
+  emptyBuff();
   SSerial.println("Ki: ");
-  while(SSerial.available() == 0)   {
+  while(SSerial.available() == 0) {
     delay(1);
   }
   Ki = SSerial.parseFloat();
+  emptyBuff();
   SSerial.println("Kd: ");
-  while(SSerial.available() == 0)   {
+  while(SSerial.available() == 0) {
     delay(1);
   }
   Kd = SSerial.parseFloat();
+  emptyBuff();
   SSerial.println("Base Speed: ");
-  while(SSerial.available() == 0)   {
+  while(SSerial.available() == 0) {
     delay(1);
   }
   initial_motor_speed = SSerial.parseInt();
+  emptyBuff();
 }
 
-void test_sensors() {
-  read_sensor_values();
-  String ir_values = "";
-  for (int i = 0; i <= 7; i++)
-  {
-    ir_values += sensor[i] + " ";
+void track_black_line() {
+
+  for(uint8_t i = 0; i < SensorCount; i++) {
+    uint16_t value = sensorValues[i];
+    qtr.readCalibrated(sensorValues, QTRReadMode::On);
+
+    // only average in values that are above a noise threshold
+    if(value > 50) {
+      Black_Line[i] = 1;
+    }
+    else {
+      Black_Line[i] = 0;
+    }
+    SSerial.print(Black_Line[i]);
+    SSerial.print(" ");
   }
-  SSerial.println(ir_values);
-  delay(100);
 }
 
-int get_black_threshold() {
-  static unsigned long currT = millis();
-  while (millis() - currT < 5000)
-  {
-    read_sensor_values();
-    delay(10);
+void emptyBuff(){
+  char x;
+  while (SSerial.available() != 0){
+    x = SSerial.read();
   }
-  
+}
+
+void motor(int vR, int vL) {
+
+  if (vR > 0 && vL > 0) {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, vL);
+    analogWrite(ENB, vR);
+    Serial.println("straight");
+  }
+  else if (vR < 0 && vL > 0) {
+    vR *= -1;
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+    analogWrite(ENA, vL);
+    analogWrite(ENB, vR);
+    Serial.println("turn left");
+  }
+  else if (vR > 0 && vL < 0) {
+    vL *= -1;
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, vL);
+    analogWrite(ENB, vR);
+    Serial.println("turn right");
+  }
+
 }
