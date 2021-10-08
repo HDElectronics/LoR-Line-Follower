@@ -34,13 +34,14 @@ SoftwareSerial SSerial(RX_BT, TX_BT);
 QTRSensors qtr;
 
 /*Variables*/
-float Kp = 0, Ki = 0, Kd = 0;//change the value of kp ,ki and kd factors randomly and find a set of these value witch works good for your robot 
+float Kp = 10, Ki = 0.1, Kd = 0.02;//change the value of kp ,ki and kd factors randomly and find a set of these value witch works good for your robot 
 float error = 0, P = 0, I = 0, D = 0, PID_value = 0;//defining the initial value 0
 float previous_error = 0, previous_I = 0;//defining initially values of previous_error and previous_I 0 
-int initial_motor_speed = 100;//defining the initial value of the motor speed as 100,can be changed
+int initial_motor_speed = 170;//defining the initial value of the motor speed as 100,can be changed
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 bool Black_Line[SensorCount];
+int left_motor_speed, right_motor_speed;
 
 /*Functions*/
 void calculate_pid(void);//function that calculates the pid value
@@ -62,6 +63,9 @@ void setup() {
   qtr.setTypeAnalog();
   qtr.setSensorPins((const uint8_t[]) { SL3, SL2, SL1, SL0, SR0, SR1, SR2, SR3 }, 8);
   qtr.setSamplesPerSensor(8);
+
+  //pid values from phone
+  bluetooth_values();
 
   SSerial.println("Calibration started for 10 secondes");
   Serial.println("Calibration started for 10 secondes");
@@ -99,6 +103,7 @@ void setup() {
 
 void loop() {
 
+  //Print raw Sensor data
   /*qtr.read(sensorValues, QTRReadMode::On);
   SSerial.println("\n\rsensorValues:");
   Serial.println("\n\rsensorValues:");
@@ -109,7 +114,8 @@ void loop() {
     Serial.print(',');
   }*/
 
-  SSerial.println("\n\rBlack_Line:");
+  //Print black line position
+  /*SSerial.println("\n\rBlack_Line:");
   Serial.println("\n\rBlack_Line:");
   for(uint8_t i = 0; i < SensorCount; i++) {
     SSerial.print(Black_Line[i]);
@@ -117,18 +123,24 @@ void loop() {
     Serial.print(Black_Line[i]);
     Serial.print(',');
   }
+  track_black_line();*/
 
-  track_black_line();
-
-  SSerial.println("\n\rerror:");
+  //Print the error
+  /*SSerial.println("\n\rerror:");
   Serial.println("\n\rerror:");
   SSerial.print(error);
   Serial.print(error);
   calculate_pid();
 
   SSerial.print(";\n\r******************");
-  Serial.print(";\n\r******************");
-  delay(100);
+  Serial.print(";\n\r******************");*/
+
+  track_black_line();
+  calculate_pid();
+  motor_control();
+  SSerial.println("\n\rLeft Right Speed:");
+  SSerial.print(left_motor_speed);SSerial.print("***");SSerial.print(right_motor_speed);
+  delay(50);
 }
 
 void calculate_pid() { //calculating pid
@@ -185,12 +197,12 @@ void calculate_pid() { //calculating pid
 
 void motor_control() { //motor control
   // Calculating the effective motor speed:
-  int left_motor_speed = initial_motor_speed + PID_value;
-  int right_motor_speed = initial_motor_speed + PID_value;
+  left_motor_speed = initial_motor_speed + PID_value;
+  right_motor_speed = initial_motor_speed + PID_value;
 
   // The motor speed should not exceed the max PWM value
-  constrain(left_motor_speed, 0, 255);
-  constrain(right_motor_speed, 0, 255);
+  constrain(left_motor_speed, -255, 255);
+  constrain(right_motor_speed, -255, 255);
 
   motor(right_motor_speed, left_motor_speed);
 }
@@ -206,24 +218,28 @@ void bluetooth_values() {
     delay(1);
   }
   Kp = SSerial.parseFloat();
+  Serial.print("Kp = ");Serial.println(Kp);
   emptyBuff();
   SSerial.println("Ki: ");
   while(SSerial.available() == 0) {
     delay(1);
   }
   Ki = SSerial.parseFloat();
+  Serial.print("Ki = ");Serial.println(Ki);
   emptyBuff();
   SSerial.println("Kd: ");
   while(SSerial.available() == 0) {
     delay(1);
   }
   Kd = SSerial.parseFloat();
+  Serial.print("Kd = ");Serial.println(Kd);
   emptyBuff();
   SSerial.println("Base Speed: ");
   while(SSerial.available() == 0) {
     delay(1);
   }
   initial_motor_speed = SSerial.parseInt();
+  Serial.print("base speed = ");Serial.println(initial_motor_speed);
   emptyBuff();
 }
 
@@ -240,8 +256,6 @@ void track_black_line() {
     else {
       Black_Line[i] = 0;
     }
-    SSerial.print(Black_Line[i]);
-    SSerial.print(" ");
   }
 }
 
@@ -257,8 +271,8 @@ void motor(int vR, int vL) {
   if (vR > 0 && vL > 0) {
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
     Serial.println("straight");
@@ -267,13 +281,23 @@ void motor(int vR, int vL) {
     vR *= -1;
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
     Serial.println("turn left");
   }
   else if (vR > 0 && vL < 0) {
+    vL *= -1;
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+    analogWrite(ENA, vL);
+    analogWrite(ENB, vR);
+    Serial.println("turn right");
+  }
+  else if (vR < 0 && vL < 0) {
     vL *= -1;
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
