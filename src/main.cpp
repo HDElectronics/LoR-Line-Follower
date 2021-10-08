@@ -2,7 +2,7 @@
  * @Author: KHADRAOUI Ibrahim
  * @Date: 2021-07-09 01:34:33
  * @Last Modified by: KHADRAOUI Ibrahim
- * @Last Modified time: 2021-10-08 11:44:33
+ * @Last Modified time: 2021-10-08 11:59:11
  */
 
 /*Libraries*/
@@ -65,9 +65,9 @@ void setup() {
   qtr.setSamplesPerSensor(8);
 
   //pid values from phone
-  bluetooth_values();
+  //bluetooth_values();
 
-  SSerial.println("Calibration started for 10 secondes");
+  /*SSerial.println("Calibration started for 10 secondes");
   Serial.println("Calibration started for 10 secondes");
   // analogRead() takes about 0.1 ms on an AVR.
   // 0.1 ms per sensor * 8 samples per sensor read * 8 sensors
@@ -98,16 +98,16 @@ void setup() {
     Serial.print(" ");
   }
   SSerial.println();
-  Serial.println();
+  Serial.println();*/
   
   //value after calibration
-  /*qtr.calibrate();
+  qtr.calibrate();
   for(uint8_t i = 0; i < SensorCount; i++) {
-    qtr.calibrationOn.minimum[i] = 25;
+    qtr.calibrationOn.minimum[i] = 150;
   }
   for(uint8_t i = 0; i < SensorCount; i++) {
-    qtr.calibrationOn.maximum[i] = 400;
-  }*/
+    qtr.calibrationOn.maximum[i] = 350;
+  }
 
 }
 
@@ -148,9 +148,11 @@ void loop() {
   track_black_line();
   calculate_pid();
   motor_control();
+  delay(1);
+  
+  //print the command sent to the motors
   SSerial.println("\n\rLeft Right Speed:");
   SSerial.print(left_motor_speed);SSerial.print("***");SSerial.print(right_motor_speed);
-  delay(1);
 }
 
 void calculate_pid() { //calculating pid
