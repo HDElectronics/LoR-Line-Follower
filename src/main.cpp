@@ -34,7 +34,7 @@ SoftwareSerial SSerial(RX_BT, TX_BT);
 QTRSensors qtr;
 
 /*Variables*/
-float Kp = 10, Ki = 0.1, Kd = 0.0;//change the value of kp ,ki and kd factors randomly and find a set of these value witch works good for your robot 
+float Kp = 64, Ki = 1.8, Kd = 0.0;//change the value of kp ,ki and kd factors randomly and find a set of these value witch works good for your robot 
 float error = 0, P = 0, I = 0, D = 0, PID_value = 0;//defining the initial value 0
 float previous_error = 0, previous_I = 0;//defining initially values of previous_error and previous_I 0 
 int initial_motor_speed = 170;//defining the initial value of the motor speed as 100,can be changed
@@ -62,7 +62,7 @@ void setup() {
   Serial.begin(9600);
   qtr.setTypeAnalog();
   qtr.setSensorPins((const uint8_t[]) { SL3, SL2, SL1, SL0, SR0, SR1, SR2, SR3 }, 8);
-  qtr.setSamplesPerSensor(8);
+  qtr.setSamplesPerSensor(2);
 
   //pid values from phone
   //bluetooth_values();
@@ -103,18 +103,20 @@ void setup() {
   //value after calibration
   qtr.calibrate();
   for(uint8_t i = 0; i < SensorCount; i++) {
-    qtr.calibrationOn.minimum[i] = 150;
+    qtr.calibrationOn.minimum[i] = 260;
   }
   for(uint8_t i = 0; i < SensorCount; i++) {
-    qtr.calibrationOn.maximum[i] = 350;
+    qtr.calibrationOn.maximum[i] = 580;
   }
 
+  motor(150,150);
+  delay(500);
 }
 
 void loop() {
 
   //Print raw Sensor data
-  /*qtr.read(sensorValues, QTRReadMode::On);
+  qtr.read(sensorValues, QTRReadMode::On);
   SSerial.println("\n\rsensorValues:");
   Serial.println("\n\rsensorValues:");
   for(uint8_t i = 0; i < SensorCount; i++) {
@@ -122,7 +124,7 @@ void loop() {
     SSerial.print(',');
     Serial.print(sensorValues[i]);
     Serial.print(',');
-  }*/
+  }
 
   //Print black line position
   /*SSerial.println("\n\rBlack_Line:");
@@ -132,8 +134,8 @@ void loop() {
     SSerial.print(',');
     Serial.print(Black_Line[i]);
     Serial.print(',');
-  }
-  track_black_line();*/
+  }*/
+  //track_black_line();
 
   //Print the error
   /*SSerial.println("\n\rerror:");
@@ -148,72 +150,73 @@ void loop() {
   track_black_line();
   calculate_pid();
   motor_control();
+  
   delay(1);
   
   //print the command sent to the motors
-  SSerial.println("\n\rLeft Right Speed:");
-  SSerial.print(left_motor_speed);SSerial.print("***");SSerial.print(right_motor_speed);
+  /*SSerial.println("\n\rLeft Right Speed:");
+  SSerial.print(left_motor_speed);SSerial.print("***");SSerial.print(right_motor_speed);*/
 }
 
 void calculate_pid() { //calculating pid
-  if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = 0;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -1;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -2;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 1 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 1 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -3;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 1 && Black_Line[2] == 1 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 1 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -4;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 1 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -5;
   }
-  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 1 && Black_Line[7] == 0) {
-    error = -6;
-  }
-  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 1 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 1 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = -7;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = 1;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 1 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 1 && Black_Line[7] == 0) {
     error = 2;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 1 && Black_Line[6] == 0 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 1 && Black_Line[7] == 0) {
     error = 3;
   }
-  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 1 && Black_Line[6] == 1 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 1 && Black_Line[7] == 0) {
     error = 4;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 1 && Black_Line[7] == 0) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 0) {
     error = 5;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 1 && Black_Line[7] == 1) {
-    error = 6;
-  }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 1) {
+  else if(Black_Line[0] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[7] == 1) {
     error = 7;
   }
-  else if(Black_Line[0] == 1 && Black_Line[1] == 1 && Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 0 && Black_Line[5] == 0 && Black_Line[6] == 0 && Black_Line[7] == 0) {
-    error = -10;
+  else if(Black_Line[0] == 1) {
+    error = -25;
   }
-  else if(Black_Line[0] == 0 && Black_Line[1] == 0 && Black_Line[2] == 0 && Black_Line[3] == 0 && Black_Line[4] == 1 && Black_Line[5] == 1 && Black_Line[6] == 1 && Black_Line[7] == 1) {
-    error = 10;
+  else if(Black_Line[7] == 1) {
+    error = 25;
   }
+  else {
+    error = error;
+  }
+  /*if(Black_Line[2] == 1 && Black_Line[3] == 1 && Black_Line[4] == 1 && Black_Line[5] == 1) {
+    motor(0,0);
+    while (1) delay(1);
+  }*/
 
   P = error;
-  I = I + previous_I;
   D = error - previous_error;
   PID_value = (Kp * P) + (Ki * I) + (Kd * D);
-  previous_I = I;
   previous_error = error;
+  I += error;
 }
 
 void motor_control() { //motor control
@@ -298,7 +301,6 @@ void motor(int vR, int vL) {
     digitalWrite(IN4, HIGH);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
-    Serial.println("straight");
   }
   else if (vR < 0 && vL > 0) {
     vR *= -1;
@@ -308,7 +310,6 @@ void motor(int vR, int vL) {
     digitalWrite(IN4, LOW);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
-    Serial.println("turn left");
   }
   else if (vR > 0 && vL < 0) {
     vL *= -1;
@@ -318,7 +319,6 @@ void motor(int vR, int vL) {
     digitalWrite(IN4, HIGH);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
-    Serial.println("turn right");
   }
   else if (vR < 0 && vL < 0) {
     vL *= -1;
@@ -329,7 +329,14 @@ void motor(int vR, int vL) {
     digitalWrite(IN4, LOW);
     analogWrite(ENA, vL);
     analogWrite(ENB, vR);
-    Serial.println("backward");
+  }
+  else if (vR == 0 && vL == 0) {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, vL);
+    analogWrite(ENB, vR);
   }
 
 }
